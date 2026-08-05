@@ -759,7 +759,7 @@ body {
   position: fixed;
   inset: 0;
   z-index: 500;
-  background: var(--bg);
+  background: var(--cream);
   display: grid;
   place-items: center;
   padding: 20px;
