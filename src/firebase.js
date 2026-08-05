@@ -110,24 +110,27 @@ export function useFirebaseState(uid, fallback) {
     return () => off(dbRef, 'value', unsub)
   }, [uid, fallback])
 
-  const update = (patch) => {
-    setState((prev) => {
-      const next = typeof patch === 'function' ? patch(prev) : { ...prev, ...patch }
-      if (database && uid) {
-        writing.current = true
-        set(ref(database, `users/${uid}/state`), next)
-          .then(() => {
-            writing.current = false
-            cached.current = next
-          })
-          .catch(() => {
-            writing.current = false
-            setState(cached.current ?? next)
-          })
-      }
-      return next
-    })
-  }
+  const update = useCallback(
+    (patch) => {
+      setState((prev) => {
+        const next = typeof patch === 'function' ? patch(prev) : { ...prev, ...patch }
+        if (database && uid) {
+          writing.current = true
+          set(ref(database, `users/${uid}/state`), next)
+            .then(() => {
+              writing.current = false
+              cached.current = next
+            })
+            .catch(() => {
+              writing.current = false
+              setState(cached.current ?? next)
+            })
+        }
+        return next
+      })
+    },
+    [uid],
+  )
 
   return { state, ready, update }
 }

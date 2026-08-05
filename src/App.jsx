@@ -27,6 +27,8 @@ const defaultData = () => ({
   workEnd: '',
   readyLeadMin: 30,
   dark: false,
+  nextStretch: null,
+  resting: null,
 })
 
 function saveLocal(data) {
@@ -112,10 +114,14 @@ export default function App() {
   )
 
   const [toast, setToast] = useState(null)
-  const [nextStretch, setNextStretch] = useState(null)
-  const [resting, setResting] = useState(null)
   const [showSettings, setShowSettings] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+
+  // El descanso vive en `data` para sincronizarse también en Firebase entre dispositivos
+  const nextStretch = data.nextStretch
+  const resting = data.resting
+  const setNextStretch = useCallback((v) => update({ nextStretch: v || null }), [update])
+  const setResting = useCallback((v) => update({ resting: v || null }), [update])
 
   const dark = data.dark
 
@@ -152,21 +158,29 @@ export default function App() {
     if (document.fullscreenElement) document.exitFullscreen?.()
     setNextStretch(Date.now() + data.stretchInterval * 60 * 1000)
     notify('Descanso completado. Volvamos a concentrarnos. 🌿')
-  }, [data.stretchInterval, notify])
+  }, [data.stretchInterval, notify, setNextStretch, setResting])
 
-  // Stretch timer
+  // Stretch timer: automático, se reprograma al inicio o al cambiar la config
+  const scheduledInterval = useRef(null)
   useEffect(() => {
-    if (!data.stretchEnabled || !nextStretch) return
-    const delay = nextStretch - Date.now()
-    if (delay <= 0) return
+    if (!data.stretchEnabled || resting) return
+    const nowMs = Date.now()
+    let target = nextStretch
+    if (!target || target <= nowMs || scheduledInterval.current !== data.stretchInterval) {
+      scheduledInterval.current = data.stretchInterval
+      target = nowMs + data.stretchInterval * 60 * 1000
+      setNextStretch(target)
+      return
+    }
     const t = setTimeout(() => {
       setNextStretch(null)
+      scheduledInterval.current = null
       setResting(Date.now() + data.restMinutes * 60 * 1000)
       document.documentElement.requestFullscreen?.().catch(() => {})
       notify('Toca levantarte y estirarte un momento. Tu cuerpo lo agradece. 🧘')
-    }, delay)
+    }, target - nowMs)
     return () => clearTimeout(t)
-  }, [nextStretch, data.stretchEnabled, data.restMinutes, notify])
+  }, [nextStretch, data.stretchEnabled, data.stretchInterval, data.restMinutes, resting, notify, setNextStretch, setResting])
 
   // Rest countdown → finish & reschedule
   useEffect(() => {
@@ -177,13 +191,20 @@ export default function App() {
       setNextStretch(Date.now() + data.stretchInterval * 60 * 1000)
       notify('Descanso completado. Volvamos a concentrarnos. 🌿')
     }
-  }, [resting, now, data.stretchInterval, notify])
+  }, [resting, now, data.stretchInterval, notify, setNextStretch, setResting])
 
   useEffect(() => {
     if (!toast) return
     const t = setTimeout(() => setToast(null), 7000)
     return () => clearTimeout(t)
   }, [toast])
+
+  // Persistir la cuenta regresiva para que sobreviva recargas (p. ej. al cambiar tema)
+  // Si vino de Firebase un timestamp vencido (p. ej. otro dispositivo), se limpia
+  useEffect(() => {
+    if (nextStretch && nextStretch <= Date.now()) setNextStretch(null)
+    if (resting && resting <= Date.now()) setResting(null)
+  }, [nextStretch, resting, setNextStretch, setResting])
 
   // Meeting alerts
   function *happeningMeetings(nowMs) {
@@ -294,6 +315,7 @@ export default function App() {
             <PlantStage progress={progress} data={data} now={now} />
             <div className="widgets">
               <Quote />
+              <RestTimer nextStretch={nextStretch} enabled={data.stretchEnabled} intervalMin={data.stretchInterval} now={now} />
               <UpNext now={now} nextMeeting={nextMeeting} />
             </div>
           </main>
@@ -304,10 +326,6 @@ export default function App() {
               now={now}
               onClose={() => setShowSettings(false)}
               update={update}
-              startStretch={() => {
-                setNextStretch(Date.now() + data.stretchInterval * 60 * 1000)
-                notify(`Te recordaré estirarte cada ${data.stretchInterval} minutos.`)
-              }}
               nextStretch={nextStretch}
             />
           )}
@@ -499,7 +517,58 @@ function UpNext({ now, nextMeeting }) {
   )
 }
 
-function SettingsPanel({ data, now, update, onClose, startStretch, nextStretch }) {
+function RestTimer({ nextStretch, enabled, intervalMin, now }) {
+  const remaining = nextStretch != null ? Math.max(0, nextStretch - now.getTime()) : null
+
+  if (!enabled) {
+    return (
+      <section className="widget rest-timer off">
+        <span className="label">Próximo descanso</span>
+        <p>Recordatorio desactivado</p>
+      </section>
+    )
+  }
+
+  if (remaining == null) {
+    return (
+      <section className="widget rest-timer off">
+        <span className="label">Próximo descanso</span>
+        <p>Programando…</p>
+      </section>
+    )
+  }
+
+  const totalMs = intervalMin * 60 * 1000
+  const frac = totalMs > 0 ? remaining / totalMs : 0
+  const mins = Math.floor(remaining / 60000)
+  const secs = Math.floor((remaining % 60000) / 1000)
+  const C = 2 * Math.PI * 74
+
+  return (
+    <section className="widget rest-timer">
+      <span className="label">Próximo descanso</span>
+      <div className="rest-timer-row">
+        <div className="rest-mini-wrap">
+          <svg className="ring" viewBox="0 0 160 160">
+            <circle className="ring-track" cx="80" cy="80" r="74" strokeWidth="10" />
+            <circle
+              className="ring-progress"
+              cx="80" cy="80" r="74" strokeWidth="10"
+              strokeDasharray={C}
+              strokeDashoffset={C * frac}
+            />
+          </svg>
+          <span className="rest-mini-digits">{String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}</span>
+        </div>
+        <p className="rest-mini-msg">
+          Tiempo que falta para tu pausa. Cuando llegue, levántate, estira y descansa los ojos. 🧘
+        </p>
+      </div>
+    </section>
+  )
+}
+
+function SettingsPanel({ data, now, update, onClose, nextStretch }) {
   const [saved, setSaved] = useState(false)
   useEffect(() => {
     setSaved(true)
@@ -537,7 +606,6 @@ function SettingsPanel({ data, now, update, onClose, startStretch, nextStretch }
             onInterval={(v) => update((p) => ({ ...p, stretchInterval: v }))}
             onRest={(v) => update((p) => ({ ...p, restMinutes: v }))}
             onToggle={() => update((p) => ({ ...p, stretchEnabled: !p.stretchEnabled }))}
-            onStart={startStretch}
             nextStretch={nextStretch}
           />
         </section>
@@ -656,11 +724,11 @@ function Group({ title, meetings, now, onDelete }) {
   )
 }
 
-function StretchSettings({ values, onInterval, onRest, onToggle, onStart, nextStretch }) {
+function StretchSettings({ values, onInterval, onRest, onToggle, nextStretch }) {
   return (
     <div className="stretch">
       <div className="stretch-row">
-        <button onClick={onStart} className="btn-secondary">▶ Iniciar recordatorio</button>
+        <span className="stretch-info">Los recordatorios se activan automáticamente.</span>
         <button onClick={onToggle} className="btn-secondary">{values.enabled ? 'Desactivar' : 'Activar'}</button>
       </div>
       <label className="stretch-label">
