@@ -108,6 +108,15 @@ Data (meetings, work schedule, preferences) is persisted in **Firebase Realtime 
 
 8. Restart the dev server (`npm run dev`) so Vite picks up the `.env` variables.
 
+### Deployment to GitHub Pages
+
+1. Push the `.github/workflows/deploy.yml` workflow to `main` (or use the **Run workflow** button in *Actions*).
+2. In the repo: **Settings → Secrets and variables → Actions → Variables** → **New repository variable** for each key of your `.env` (same names, e.g. `VITE_FIREBASE_API_KEY`).
+3. In **Settings → Pages → Source**: select **GitHub Actions**.
+4. Each push to `main` builds the app (injecting the variables) and deploys `dist/`.
+
+> The `.env` file is **not** needed in production: Vite bakes the `VITE_` variables into the JS bundle at build time.
+
 > **Note:** `.env` is gitignored to keep your credentials private. Don't commit it.
 
 ## 🧰 Stack
