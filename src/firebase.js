@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { initializeApp } from 'firebase/app'
 import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithCredential, signOut } from 'firebase/auth'
 import { getDatabase, off, onValue, ref, set } from 'firebase/database'
@@ -62,7 +62,7 @@ export function useAuth() {
     }
   }, [])
 
-  const signIn = async (idToken) => {
+  const signIn = useCallback(async (idToken) => {
     if (!auth) return
     setError(null)
     try {
@@ -72,7 +72,7 @@ export function useAuth() {
     } catch (err) {
       setError(err?.code ?? err?.message ?? String(err))
     }
-  }
+  }, [])
 
   const signOutUser = async () => {
     if (auth) await signOut(auth)

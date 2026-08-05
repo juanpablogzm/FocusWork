@@ -47,6 +47,12 @@ function loadData() {
   }
 }
 
+function normalizeData(d) {
+  const merged = { ...defaultData(), ...(d ?? {}) }
+  if (!Array.isArray(merged.meetings)) merged.meetings = []
+  return merged
+}
+
 function useNow() {
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
@@ -90,8 +96,9 @@ function nextOccurrence(m, after) {
 export default function App() {
   const now = useNow()
   const { user, error: authError, signIn, signOutUser, firebaseEnabled } = useAuth()
-  const fallback = useMemo(() => loadData(), [])
-  const { state: data, update: firebaseUpdate } = useFirebaseState(user?.uid, fallback)
+  const fallback = useMemo(() => normalizeData(loadData()), [])
+  const { state, update: firebaseUpdate } = useFirebaseState(user?.uid, fallback)
+  const data = useMemo(() => normalizeData(state), [state])
 
   const update = useCallback(
     (patch) => {
@@ -359,6 +366,7 @@ function AuthScreen({ firebaseEnabled, error, onSignIn }) {
 
 function GoogleSignInButton({ clientId, onToken }) {
   const containerRef = useRef(null)
+  const initedRef = useRef(null)
   const [error, setError] = useState(null)
 
   useEffect(() => {
@@ -370,10 +378,14 @@ function GoogleSignInButton({ clientId, onToken }) {
     loadGSIScript()
       .then(() => {
         if (cancelled || !containerRef.current) return
-        window.google.accounts.id.initialize({
-          client_id: clientId,
-          callback: (response) => onToken(response.credential),
-        })
+        if (initedRef.current !== clientId) {
+          initedRef.current = clientId
+          window.google.accounts.id.initialize({
+            client_id: clientId,
+            callback: (response) => onToken(response.credential),
+          })
+        }
+        containerRef.current.innerHTML = ''
         window.google.accounts.id.renderButton(containerRef.current, {
           theme: 'outline',
           size: 'large',
