@@ -81,14 +81,40 @@ src/
 
 ## 💾 Persistence
 
-Data (meetings, work schedule, preferences) is currently stored in the browser's `localStorage`, so it persists between reloads. No server or database is required.
+Data (meetings, work schedule, preferences) is persisted in **Firebase Realtime Database** and synchronized across devices when you sign in with your **Google account**. While signed out, or if Firebase isn't configured, it falls back to `localStorage`.
 
-> **Next step:** migration to **Firestore** to sync data across devices.
+### Firebase setup (one time)
+
+1. Go to the [Firebase Console](https://console.firebase.google.com) and **create a project** (or select one).
+2. **Add your app** → select **Web** (`</>`), give it a name, and register it.
+3. Copy the SDK config snippet (keys like `apiKey`, `authDomain`, `databaseURL`, `projectId`, …).
+4. Create a `.env` file at the project root based on `.env.example` and paste your values (they start with `VITE_FIREBASE_`).
+5. In the console, enable **Authentication** → *Get started* → **Google** provider → enable it and save.
+6. Enable **Realtime Database** → *Create database* → choose a mode and region.
+7. Set up **database rules** so each user can only read/write their own data:
+
+```json
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        ".write": "$uid === auth.uid"
+      }
+    }
+  }
+}
+```
+
+8. Restart the dev server (`npm run dev`) so Vite picks up the `.env` variables.
+
+> **Note:** `.env` is gitignored to keep your credentials private. Don't commit it.
 
 ## 🧰 Stack
 
 - [React](https://react.dev) 19
 - [Vite](https://vitejs.dev) 8
+- [Firebase](https://firebase.google.com) — Google Auth + Realtime Database
 - [oxlint](https://oxc.rs) for linting
 
 ## 📄 License

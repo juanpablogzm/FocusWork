@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useAuth, useFirebaseState, gsiClientId, loadGSIScript } from './firebase.js'
 import './App.css'
 
 const STORAGE_KEY = 'focuswork:data'
@@ -20,11 +21,21 @@ const defaultData = () => ({
   meetings: [],
   stretchInterval: 60,
   stretchEnabled: true,
+  restMinutes: 5,
   focusSeconds: 0,
   workStart: '',
   workEnd: '',
   readyLeadMin: 30,
+  dark: false,
 })
+
+function saveLocal(data) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+  } catch {
+    // localStorage no disponible (privado/bloqueado): solo en memoria
+  }
+}
 
 function loadData() {
   try {
@@ -43,26 +54,6 @@ function useNow() {
     return () => clearInterval(t)
   }, [])
   return now
-}
-
-function saveData(data) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
-  } catch {
-    // localStorage no disponible (privado/bloqueado): solo en memoria
-  }
-}
-
-function useLocalData() {
-  const [data, setData] = useState(loadData)
-  const update = useCallback((patch) => {
-    setData((prev) => {
-      const next = typeof patch === 'function' ? patch(prev) : { ...prev, ...patch }
-      saveData(next)
-      return next
-    })
-  }, [])
-  return [data, update]
 }
 
 // Calcula el timestamp de la próxima ocurrencia de una reunión después de `after`
@@ -98,23 +89,30 @@ function nextOccurrence(m, after) {
 
 export default function App() {
   const now = useNow()
-  const [data, update] = useLocalData()
+  const { user, error: authError, signIn, signOutUser, firebaseEnabled } = useAuth()
+  const fallback = useMemo(() => loadData(), [])
+  const { state: data, update: firebaseUpdate } = useFirebaseState(user?.uid, fallback)
+
+  const update = useCallback(
+    (patch) => {
+      firebaseUpdate((prev) => {
+        const next = typeof patch === 'function' ? patch(prev) : { ...prev, ...patch }
+        saveLocal(next)
+        return next
+      })
+    },
+    [firebaseUpdate],
+  )
+
   const [toast, setToast] = useState(null)
   const [nextStretch, setNextStretch] = useState(null)
+  const [resting, setResting] = useState(null)
   const [showSettings, setShowSettings] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [dark, setDark] = useState(() => {
-    try {
-      return localStorage.getItem('focuswork:dark') === '1'
-    } catch {
-      return false
-    }
-  })
+
+  const dark = data.dark
 
   useEffect(() => {
-    try {
-      localStorage.setItem('focuswork:dark', dark ? '1' : '0')
-    } catch {}
     document.documentElement.classList.toggle('dark', dark)
   }, [dark])
 
@@ -142,17 +140,37 @@ export default function App() {
     else document.exitFullscreen?.()
   }
 
+  const finishRest = useCallback(() => {
+    setResting(null)
+    if (document.fullscreenElement) document.exitFullscreen?.()
+    setNextStretch(Date.now() + data.stretchInterval * 60 * 1000)
+    notify('Descanso completado. Volvamos a concentrarnos. 🌿')
+  }, [data.stretchInterval, notify])
+
   // Stretch timer
   useEffect(() => {
     if (!data.stretchEnabled || !nextStretch) return
     const delay = nextStretch - Date.now()
     if (delay <= 0) return
     const t = setTimeout(() => {
-      notify('Toca levantarte y estirarte un momento. Tu cuerpo lo agradece. 🧘')
       setNextStretch(null)
+      setResting(Date.now() + data.restMinutes * 60 * 1000)
+      document.documentElement.requestFullscreen?.().catch(() => {})
+      notify('Toca levantarte y estirarte un momento. Tu cuerpo lo agradece. 🧘')
     }, delay)
     return () => clearTimeout(t)
-  }, [nextStretch, data.stretchEnabled, notify])
+  }, [nextStretch, data.stretchEnabled, data.restMinutes, notify])
+
+  // Rest countdown → finish & reschedule
+  useEffect(() => {
+    if (!resting) return
+    if (Date.now() >= resting) {
+      setResting(null)
+      if (document.fullscreenElement) document.exitFullscreen?.()
+      setNextStretch(Date.now() + data.stretchInterval * 60 * 1000)
+      notify('Descanso completado. Volvamos a concentrarnos. 🌿')
+    }
+  }, [resting, now, data.stretchInterval, notify])
 
   useEffect(() => {
     if (!toast) return
@@ -246,7 +264,10 @@ export default function App() {
       <div className="topbar">
         <span className="brand">FocusWork</span>
         <div className="top-actions">
-          <button className="icon-btn" onClick={() => setDark((d) => !d)} title="Cambiar tema">
+          {user && (
+            <UserChip name={user.displayName} photo={user.photoURL} onSignOut={signOutUser} />
+          )}
+          <button className="icon-btn" onClick={() => update((p) => ({ ...p, dark: !p.dark }))} title="Cambiar tema">
             {dark ? '☀' : '🌙'}
           </button>
           <button className="icon-btn" onClick={toggleFullscreen} title="Pantalla completa">
@@ -258,27 +279,117 @@ export default function App() {
 
       {toast && <Toast text={toast} onClose={() => setToast(null)} />}
 
-      <main className="stage">
-        <PlantStage progress={progress} data={data} now={now} />
-        <div className="widgets">
-          <Quote />
-          <UpNext now={now} nextMeeting={nextMeeting} />
-        </div>
-      </main>
+      {resting && <RestOverlay endsAt={resting} total={data.restMinutes * 60} now={now} onFinish={finishRest} />}
 
-      {showSettings && (
-        <SettingsPanel
-          data={data}
-          now={now}
-          onClose={() => setShowSettings(false)}
-          update={update}
-          startStretch={() => {
-            setNextStretch(Date.now() + data.stretchInterval * 60 * 1000)
-            notify(`Te recordaré estirarte cada ${data.stretchInterval} minutos.`)
-          }}
-          nextStretch={nextStretch}
+      {user ? (
+        <>
+          <main className="stage">
+            <PlantStage progress={progress} data={data} now={now} />
+            <div className="widgets">
+              <Quote />
+              <UpNext now={now} nextMeeting={nextMeeting} />
+            </div>
+          </main>
+
+          {showSettings && (
+            <SettingsPanel
+              data={data}
+              now={now}
+              onClose={() => setShowSettings(false)}
+              update={update}
+              startStretch={() => {
+                setNextStretch(Date.now() + data.stretchInterval * 60 * 1000)
+                notify(`Te recordaré estirarte cada ${data.stretchInterval} minutos.`)
+              }}
+              nextStretch={nextStretch}
+            />
+          )}
+        </>
+      ) : (
+        <AuthScreen
+          firebaseEnabled={firebaseEnabled}
+          error={authError}
+          onSignIn={signIn}
         />
       )}
+    </div>
+  )
+}
+
+function UserChip({ name, photo, onSignOut }) {
+  return (
+    <span className="user-chip" title={name}>
+      {photo ? <img className="user-avatar" src={photo} alt="" /> : <span className="user-avatar">{name?.[0]}</span>}
+      <button className="icon-btn" onClick={onSignOut} title="Cerrar sesión">⎋</button>
+    </span>
+  )
+}
+
+function AuthScreen({ firebaseEnabled, error, onSignIn }) {
+  const displayError = error
+    ? String(error)
+        .replace('Firebase: Error (', '')
+        .replace(').', '')
+        .replaceAll('auth/', '')
+        .replaceAll('-', ' ')
+    : ''
+  return (
+    <div className="auth-screen">
+      <div className="auth-card">
+        <h1>FocusWork</h1>
+        <p>Inicia sesión para sincronizar tus datos en la nube y accederlos desde cualquier dispositivo.</p>
+        {firebaseEnabled ? (
+          <>
+            <GoogleSignInButton clientId={gsiClientId} onToken={onSignIn} />
+            {error ? (
+              <p className="auth-error">⚠ {displayError}</p>
+            ) : (
+              <p className="auth-hint">Tus datos se guardan en la nube y se sincronizan entre dispositivos.</p>
+            )}
+          </>
+        ) : (
+          <p className="empty">
+            Firebase no está configurado. Añade tus credenciales en un archivo <code>.env</code> (ver README).
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function GoogleSignInButton({ clientId, onToken }) {
+  const containerRef = useRef(null)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    if (!clientId) {
+      setError('Falta VITE_FIREBASE_WEB_CLIENT_ID en tu .env')
+      return
+    }
+    let cancelled = false
+    loadGSIScript()
+      .then(() => {
+        if (cancelled || !containerRef.current) return
+        window.google.accounts.id.initialize({
+          client_id: clientId,
+          callback: (response) => onToken(response.credential),
+        })
+        window.google.accounts.id.renderButton(containerRef.current, {
+          theme: 'outline',
+          size: 'large',
+          text: 'continue_with',
+          shape: 'pill',
+        })
+      })
+      .catch((e) => setError(String(e)))
+    return () => {
+      cancelled = true
+    }
+  }, [clientId, onToken])
+
+  return (
+    <div className="gsi-wrap">
+      {error ? <p className="auth-error">⚠ {error}</p> : <div ref={containerRef} />}
     </div>
   )
 }
@@ -410,8 +521,9 @@ function SettingsPanel({ data, now, update, onClose, startStretch, nextStretch }
         <section className="panel-section">
           <h3>🧘 Momentos de descanso</h3>
           <StretchSettings
-            values={{ interval: data.stretchInterval, enabled: data.stretchEnabled }}
+            values={{ interval: data.stretchInterval, enabled: data.stretchEnabled, rest: data.restMinutes }}
             onInterval={(v) => update((p) => ({ ...p, stretchInterval: v }))}
+            onRest={(v) => update((p) => ({ ...p, restMinutes: v }))}
             onToggle={() => update((p) => ({ ...p, stretchEnabled: !p.stretchEnabled }))}
             onStart={startStretch}
             nextStretch={nextStretch}
@@ -532,7 +644,7 @@ function Group({ title, meetings, now, onDelete }) {
   )
 }
 
-function StretchSettings({ values, onInterval, onToggle, onStart, nextStretch }) {
+function StretchSettings({ values, onInterval, onRest, onToggle, onStart, nextStretch }) {
   return (
     <div className="stretch">
       <div className="stretch-row">
@@ -547,6 +659,14 @@ function StretchSettings({ values, onInterval, onToggle, onStart, nextStretch })
           <option value={90}>90</option>
         </select> minutos
       </label>
+      <label className="stretch-label">
+        Duración del descanso: <select className="select" value={values.rest} onChange={(e) => onRest(Number(e.target.value))}>
+          <option value={3}>3</option>
+          <option value={5}>5</option>
+          <option value={10}>10</option>
+          <option value={15}>15</option>
+        </select> minutos
+      </label>
       {nextStretch && <p className="next-stretch">Próximo descanso en {Math.max(1, Math.round((nextStretch - Date.now()) / 60000))} min</p>}
     </div>
   )
@@ -558,6 +678,38 @@ function Toast({ text, onClose }) {
       <div className="toast">
         <p>{text}</p>
         <button onClick={onClose} className="toast-close">✕</button>
+      </div>
+    </div>
+  )
+}
+
+function RestOverlay({ endsAt, total, now, onFinish }) {
+  const remainingMs = Math.max(0, endsAt - now.getTime())
+  const secs = Math.ceil(remainingMs / 1000)
+  const mm = Math.floor(secs / 60)
+  const ss = secs % 60
+  const totalMs = total * 1000
+  const frac = totalMs > 0 ? remainingMs / totalMs : 0
+  return (
+    <div className="rest-overlay">
+      <div className="rest-box">
+        <div className="rest-ring-wrap">
+          <svg className="ring" viewBox="0 0 320 320">
+            <circle className="ring-track" cx="160" cy="160" r="148" />
+            <circle
+              className="ring-progress rest-ring"
+              cx="160" cy="160" r="148"
+              style={{ strokeDashoffset: 930 * (1 - frac) }}
+            />
+          </svg>
+          <div className="rest-center">
+            <span className="rest-digits">{String(mm).padStart(2, '0')}:{String(ss).padStart(2, '0')}</span>
+            <span className="rest-label">Descanso</span>
+          </div>
+        </div>
+        <h2>Hora de pararte 🧘</h2>
+        <p className="rest-msg">Levanta, estírate, respira y mueve un poco el cuerpo. Tómate tu tiempo.</p>
+        <button className="btn-primary" onClick={onFinish}>Terminar descanso</button>
       </div>
     </div>
   )
