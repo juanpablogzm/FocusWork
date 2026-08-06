@@ -64,6 +64,20 @@ function useNow() {
   return now
 }
 
+// iOS Safari no expone el API de pantalla completa para la página (solo videos).
+function supportsFullscreen() {
+  return typeof document !== 'undefined' && typeof document.documentElement?.requestFullscreen === 'function'
+}
+
+// Ejecutándose como PWA (agregada a pantalla de inicio): ya ocupa toda la pantalla
+function isStandalonePwa() {
+  if (typeof window === 'undefined') return false
+  return (
+    window.navigator.standalone === true ||
+    (typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches)
+  )
+}
+
 // Calcula el timestamp de la próxima ocurrencia de una reunión después de `after`
 function nextOccurrence(m, after) {
   const base = new Date(m.datetime)
@@ -143,14 +157,27 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    const onFs = () => setIsFullscreen(!!document.fullscreenElement)
+    const onFs = () => setIsFullscreen(supportsFullscreen() ? !!document.fullscreenElement : isStandalonePwa())
     document.addEventListener('fullscreenchange', onFs)
-    return () => document.removeEventListener('fullscreenchange', onFs)
+    window.addEventListener('resize', onFs)
+    return () => {
+      document.removeEventListener('fullscreenchange', onFs)
+      window.removeEventListener('resize', onFs)
+    }
   }, [])
 
   const toggleFullscreen = () => {
-    if (!document.fullscreenElement) document.documentElement.requestFullscreen?.()
-    else document.exitFullscreen?.()
+    if (isStandalonePwa()) return
+    if (document.fullscreenElement) {
+      document.exitFullscreen?.().catch(() => {})
+      return
+    }
+    if (supportsFullscreen()) {
+      document.documentElement.requestFullscreen?.().catch(() => {})
+      return
+    }
+    // iOS Safari no soporta el API de pantalla completa → guía a modo PWA
+    notify('En iPhone/iPad abre el menú Compartir → “Agregar a pantalla de inicio” y así FocusWork ocupará toda la pantalla. 📲')
   }
 
   const finishRest = useCallback(() => {
