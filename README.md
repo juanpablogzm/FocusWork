@@ -1,131 +1,102 @@
+<div align="center">
+
 # 🌿 FocusWork
 
-A minimalist, friendly web app to help you organize your workday, designed to reduce distractions and support your well-being.
+### Organiza tu jornada de trabajo, enfócate y cuida tu bienestar.
 
-![Palette](https://img.shields.io/badge/palette-mint%20green-3fae84) ![Stack](https://img.shields.io/badge/stack-React%20%2B%20Vite-61dafb) ![Status](https://img.shields.io/badge/status-in%20development-yellow)
+Una **PWA** minimalista y amigable que te acompaña durante tu día laboral: plantita que crece con tu progreso, recordatorios de estiramientos, reuniones recurrentes y modo kiosco para eliminar distracciones.
 
-## ✨ Features
+**[🚀 Demo en vivo](https://juan-bot.github.io/FocusWork/)**
 
-- 🕐 **Live clock** — a big, always-visible clock in the center of the screen.
-- 🌱 **Growing plant** — visually represents your accumulated focus progress; it grows as you advance.
-- ⭕ **Workday progress ring** — shows the percentage of your work schedule you've completed (start → end), in real time.
-- 📅 **Meetings** — add meetings with date and time, with **recurrence** support (daily, weekly, monthly). You get notified 5 minutes before each one.
-- 🧘 **Stretch reminders** — get reminded to stand up and stretch at your chosen interval.
-- ⏰ **Leaving reminder** — notifies you to "get ready to leave" before your workday ends.
-- 💬 **Motivational quotes** — rotate automatically every 20 seconds.
-- 🌙 **Dark mode** — toggle between light and dark themes.
-- 🖥 **Fullscreen** — kiosk mode to stay focused.
-- 📱 **Responsive** — designed to look great on desktop and mobile.
+![Version](https://img.shields.io/badge/version-0.1.0-3fae84) ![React](https://img.shields.io/badge/React-19-61dafb) ![Vite](https://img.shields.io/badge/Vite-8-646cff) ![Firebase](https://img.shields.io/badge/Firebase-Google%20Auth%20%2B%20Realtime-ffca28) ![PWA](https://img.shields.io/badge/PWA-ready-2ea043) ![License](https://img.shields.io/badge/license-private-8b8b8b)
 
-## 🎨 Design
+</div>
 
-Inspired by wellness and productivity apps, following Material Design principles:
+---
 
-- **Mint green** and natural tones palette.
-- Rounded corners, soft shadows, and subtle micro-interactions.
-- A clean interface with few visual elements to avoid distractions.
+## ✨ Características
+
+| | |
+|---|---|
+| 🕐 **Reloj en vivo** | Gran reloj siempre visible en el centro de la pantalla. |
+| 🌱 **Planta que crece** | Representa visualmente tu progreso de foco acumulado; crece a medida que avanzás. |
+| ⭕ **Anillo de progreso** | Muestra el % de tu jornada laboral completada (inicio → fin) en tiempo real. |
+| 📅 **Reuniones** | Agendá reuniones con fecha/hora y **recurrencia** (diaria, semanal, mensual). Notificación 5 min antes. |
+| 🧘 **Recordatorio de estiramientos** | Aviso para levantarte y estirarte en el intervalo que elijas. |
+| 🏁 **Recordatorio de salida** | Te avisa para "prepararte para irte" antes del fin de tu jornada. |
+| 💬 **Frases motivacionales** | Rotan automáticamente cada 20 segundos. |
+| 🌙 **Modo oscuro** | Cambiá entre tema claro y oscuro. |
+| 🖥 **Pantalla completa** | Modo kiosco para máxima concentración. |
+| 📱 **Responsive** | Diseñada para verse increíble en cualquier dispositivo. |
+| ☁️ **Sincronización en la nube** | Tus datos en Firebase Realtime DB, sincronizados entre dispositivos con tu cuenta de Google. |
+
+---
 
 ## 🚀 Getting Started
 
-### Requirements
+### Requisitos
+- Node.js 18+ y npm
 
-- Node.js 18+ and npm
-
-### Installation
+### Instalación
 
 ```bash
-# Clone the repository
 git clone https://github.com/juan-bot/FocusWork.git
 cd FocusWork
-
-# Install dependencies
 npm install
-
-# Start the development server
 npm run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173) in your browser.
+Abrí http://localhost:5173 en tu navegador.
 
-### Production build
-
+### Despliegue en GitHub Pages
 ```bash
-npm run build
-npm run preview
+npm run build && npm run preview
 ```
 
-### Lint
-
-```bash
-npm run lint
-```
-
-## 🛠 Scripts
-
-| Command           | Description                            |
-| ----------------- | -------------------------------------- |
-| `npm run dev`     | Development server with hot reload     |
-| `npm run build`   | Build the app for production           |
-| `npm run preview` | Preview the production build           |
-| `npm run lint`    | Lint the code with oxlint              |
-
-## 🗂 Project Structure
-
-```
-src/
-├── main.jsx     # React entry point
-├── App.jsx      # Main component and app logic
-├── App.css      # App styles
-└── index.css    # Global styles
-```
-
-## 💾 Persistence
-
-Data (meetings, work schedule, preferences) is persisted in **Firebase Realtime Database** and synchronized across devices when you sign in with your **Google account**. While signed out, or if Firebase isn't configured, it falls back to `localStorage`.
-
-### Firebase setup (one time)
-
-1. Go to the [Firebase Console](https://console.firebase.google.com) and **create a project** (or select one).
-2. **Add your app** → select **Web** (`</>`), give it a name, and register it.
-3. Copy the SDK config snippet (keys like `apiKey`, `authDomain`, `databaseURL`, `projectId`, …).
-4. Create a `.env` file at the project root based on `.env.example` and paste your values (they start with `VITE_FIREBASE_`).
-5. In the console, enable **Authentication** → *Get started* → **Google** provider → enable it and save.
-6. Enable **Realtime Database** → *Create database* → choose a mode and region.
-7. Set up **database rules** so each user can only read/write their own data:
-
-```json
-{
-  "rules": {
-    "users": {
-      "$uid": {
-        ".read": "$uid === auth.uid",
-        ".write": "$uid === auth.uid"
-      }
-    }
-  }
-}
-```
-
-8. Restart the dev server (`npm run dev`) so Vite picks up the `.env` variables.
-
-### Deployment to GitHub Pages
-
-1. Push the `.github/workflows/deploy.yml` workflow to `main` (or use the **Run workflow** button in *Actions*).
-2. In the repo: **Settings → Secrets and variables → Actions → Variables** → **New repository variable** for each key of your `.env` (same names, e.g. `VITE_FIREBASE_API_KEY`).
-3. In **Settings → Pages → Source**: select **GitHub Actions**.
-4. Each push to `main` builds the app (injecting the variables) and deploys `dist/`.
-
-> The `.env` file is **not** needed in production: Vite bakes the `VITE_` variables into the JS bundle at build time.
-
-> **Note:** `.env` is gitignored to keep your credentials private. Don't commit it.
+---
 
 ## 🧰 Stack
 
-- [React](https://react.dev) 19
-- [Vite](https://vitejs.dev) 8
-- [Firebase](https://firebase.google.com) — Google Auth + Realtime Database
-- [oxlint](https://oxc.rs) for linting
+- **React 19** – UI declarativa con hooks y componentes.
+- **Vite 8** – Bundler ultrarrápido con HMR.
+- **Firebase** – Google Authentication + Realtime Database (sincronización multi-dispositivo).
+- **oxlint** – Linting con reglas modernas.
+- **PWA + Manifest** – Instalable en cualquier dispositivo.
 
-## 📄 License
+---
 
-Private use project. Please ask before redistributing it.
+## 📁 Estructura del proyecto
+
+```
+src/
+├── main.jsx          # Entrada de React
+├── App.jsx           # Componente principal y lógica
+├── App.css           # Estilos del componente
+├── index.css         # Estilos globales
+└── firebase.js       # Configuración y helpers de Firebase
+```
+
+---
+
+## 🔐 Persistencia
+
+Los datos (reuniones, horario laboral y preferencias) se persisten en **Firebase Realtime Database** y se sincronizan entre dispositivos al iniciar sesión con tu **cuenta de Google**. Sin sesión (o sin Firebase configurado), la app usa de respaldo `localStorage`.
+
+> 🔒 Las credenciales (`VITE_FIREBASE_*`, ver `.env.example`) están en `.gitignore` y nunca se suben al repositorio.
+
+---
+
+## 🛠 Scripts
+
+| Comando | Descripción |
+|---|---|
+| `npm run dev` | Servidor de desarrollo con hot reload |
+| `npm run build` | Build de producción |
+| `npm run preview` | Previsualiza el build |
+| `npm run lint` | Lint con oxlint |
+
+---
+
+## 📄 Licencia
+
+Proyecto de uso privado. Consultá antes de redistribuirlo.
