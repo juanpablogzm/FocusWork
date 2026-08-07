@@ -2,11 +2,11 @@
 
 # 🌿 FocusWork
 
-### Organiza tu jornada de trabajo, enfócate y cuida tu bienestar.
+### Organize your workday, stay focused, and take care of your well-being.
 
-Una **PWA** minimalista y amigable que te acompaña durante tu día laboral: plantita que crece con tu progreso, recordatorios de estiramientos, reuniones recurrentes y modo kiosco para eliminar distracciones.
+A minimalist, friendly **PWA** that keeps you company through your workday: a plant that grows with your progress, stretch reminders, recurring meetings, and a kiosk mode to block out distractions.
 
-**[🚀 Demo en vivo](https://juan-bot.github.io/FocusWork/)**
+**[🚀 Live Demo](https://juan-bot.github.io/FocusWork/)**
 
 ![Version](https://img.shields.io/badge/version-0.1.0-3fae84) ![React](https://img.shields.io/badge/React-19-61dafb) ![Vite](https://img.shields.io/badge/Vite-8-646cff) ![Firebase](https://img.shields.io/badge/Firebase-Google%20Auth%20%2B%20Realtime-ffca28) ![PWA](https://img.shields.io/badge/PWA-ready-2ea043) ![License](https://img.shields.io/badge/license-private-8b8b8b)
 
@@ -14,30 +14,30 @@ Una **PWA** minimalista y amigable que te acompaña durante tu día laboral: pla
 
 ---
 
-## ✨ Características
+## ✨ Features
 
 | | |
 |---|---|
-| 🕐 **Reloj en vivo** | Gran reloj siempre visible en el centro de la pantalla. |
-| 🌱 **Planta que crece** | Representa visualmente tu progreso de foco acumulado; crece a medida que avanzás. |
-| ⭕ **Anillo de progreso** | Muestra el % de tu jornada laboral completada (inicio → fin) en tiempo real. |
-| 📅 **Reuniones** | Agendá reuniones con fecha/hora y **recurrencia** (diaria, semanal, mensual). Notificación 5 min antes. |
-| 🧘 **Recordatorio de estiramientos** | Aviso para levantarte y estirarte en el intervalo que elijas. |
-| 🏁 **Recordatorio de salida** | Te avisa para "prepararte para irte" antes del fin de tu jornada. |
-| 💬 **Frases motivacionales** | Rotan automáticamente cada 20 segundos. |
-| 🌙 **Modo oscuro** | Cambiá entre tema claro y oscuro. |
-| 🖥 **Pantalla completa** | Modo kiosco para máxima concentración. |
-| 📱 **Responsive** | Diseñada para verse increíble en cualquier dispositivo. |
-| ☁️ **Sincronización en la nube** | Tus datos en Firebase Realtime DB, sincronizados entre dispositivos con tu cuenta de Google. |
+| 🕐 **Live clock** | A big, always-visible clock in the center of the screen. |
+| 🌱 **Growing plant** | Visually represents your accumulated focus progress; it grows as you advance. |
+| ⭕ **Progress ring** | Shows the % of your workday completed (start → end) in real time. |
+| 📅 **Meetings** | Schedule meetings with date/time and **recurrence** (daily, weekly, monthly). Get notified 5 minutes before each one. |
+| 🧘 **Stretch reminders** | Reminds you to stand up and stretch at the interval you choose. |
+| 🏁 **Leaving reminder** | Nudges you to "get ready to leave" before your workday ends. |
+| 💬 **Motivational quotes** | Rotate automatically every 20 seconds. |
+| 🌙 **Dark mode** | Toggle between light and dark themes. |
+| 🖥 **Fullscreen** | Kiosk mode for maximum focus. |
+| 📱 **Responsive** | Designed to look great on any device. |
+| ☁️ **Cloud sync** | Data stored in Firebase Realtime DB, synced across devices with your Google account. |
 
 ---
 
 ## 🚀 Getting Started
 
-### Requisitos
-- Node.js 18+ y npm
+### Requirements
+- Node.js 18+ and npm
 
-### Instalación
+### Installation
 
 ```bash
 git clone https://github.com/juan-bot/FocusWork.git
@@ -46,57 +46,57 @@ npm install
 npm run dev
 ```
 
-Abrí http://localhost:5173 en tu navegador.
+Open http://localhost:5173 in your browser.
 
-### Despliegue en GitHub Pages
+### Production build
 ```bash
 npm run build && npm run preview
 ```
 
 ---
 
-## 🧰 Stack
+## 🧰 Tech Stack
 
-- **React 19** – UI declarativa con hooks y componentes.
-- **Vite 8** – Bundler ultrarrápido con HMR.
-- **Firebase** – Google Authentication + Realtime Database (sincronización multi-dispositivo).
-- **oxlint** – Linting con reglas modernas.
-- **PWA + Manifest** – Instalable en cualquier dispositivo.
+- **React 19** – declarative UI with hooks and components.
+- **Vite 8** – ultra-fast bundler with HMR.
+- **Firebase** – Google Authentication + Realtime Database (multi-device sync).
+- **oxlint** – modern linting rules.
+- **PWA + Manifest** – installable on any device.
 
 ---
 
-## 📁 Estructura del proyecto
+## 📁 Project Structure
 
 ```
 src/
-├── main.jsx          # Entrada de React
-├── App.jsx           # Componente principal y lógica
-├── App.css           # Estilos del componente
-├── index.css         # Estilos globales
-└── firebase.js       # Configuración y helpers de Firebase
+├── main.jsx          # React entry point
+├── App.jsx           # Main component and app logic
+├── App.css           # App styles
+├── index.css         # Global styles
+└── firebase.js       # Firebase config and helpers
 ```
 
 ---
 
-## 🔐 Persistencia
+## 🔐 Persistence
 
-Los datos (reuniones, horario laboral y preferencias) se persisten en **Firebase Realtime Database** y se sincronizan entre dispositivos al iniciar sesión con tu **cuenta de Google**. Sin sesión (o sin Firebase configurado), la app usa de respaldo `localStorage`.
+Data (meetings, work schedule, preferences) is persisted in **Firebase Realtime Database** and synced across devices when you sign in with your **Google account**. When signed out (or if Firebase isn't configured), the app falls back to `localStorage`.
 
-> 🔒 Las credenciales (`VITE_FIREBASE_*`, ver `.env.example`) están en `.gitignore` y nunca se suben al repositorio.
+> 🔒 Credentials (`VITE_FIREBASE_*`, see `.env.example`) are in `.gitignore` and never committed.
 
 ---
 
 ## 🛠 Scripts
 
-| Comando | Descripción |
+| Command | Description |
 |---|---|
-| `npm run dev` | Servidor de desarrollo con hot reload |
-| `npm run build` | Build de producción |
-| `npm run preview` | Previsualiza el build |
-| `npm run lint` | Lint con oxlint |
+| `npm run dev` | Development server with hot reload |
+| `npm run build` | Production build |
+| `npm run preview` | Preview the production build |
+| `npm run lint` | Lint with oxlint |
 
 ---
 
-## 📄 Licencia
+## 📄 License
 
-Proyecto de uso privado. Consultá antes de redistribuirlo.
+Private use project. Please ask before redistributing it.
