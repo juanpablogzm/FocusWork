@@ -762,6 +762,7 @@ function StretchSettings({ values, onInterval, onRest, onToggle, nextStretch }) 
         Cada <select className="select" value={values.interval} onChange={(e) => onInterval(Number(e.target.value))}>
           <option value={30}>30</option>
           <option value={45}>45</option>
+          <option value={50}>50</option>
           <option value={60}>60</option>
           <option value={90}>90</option>
         </select> minutos
