@@ -935,3 +935,11 @@ body {
 .rest-box .btn-primary {
   margin-top: 6px;
 }
+
+.footer {
+  margin-top: auto;
+  padding: 16px 0 4px;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--muted);
+}

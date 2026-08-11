@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth, useFirebaseState, gsiClientId, loadGSIScript } from './firebase.js'
+import pkg from '../package.json'
 import './App.css'
 
 const STORAGE_KEY = 'focuswork:data'
@@ -364,6 +365,8 @@ export default function App() {
           onSignIn={signIn}
         />
       )}
+
+      <footer className="footer">FocusWork v{pkg.version}</footer>
     </div>
   )
 }
