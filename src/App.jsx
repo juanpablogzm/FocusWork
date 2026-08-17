@@ -30,6 +30,7 @@ const defaultData = () => ({
   dark: false,
   nextStretch: null,
   resting: null,
+  soundEnabled: true,
 })
 
 function saveLocal(data) {
@@ -54,6 +55,53 @@ function normalizeData(d) {
   const merged = { ...defaultData(), ...(d ?? {}) }
   if (!Array.isArray(merged.meetings)) merged.meetings = []
   return merged
+}
+
+// Timbre de notificación generado con Web Audio API (no requiere archivos de audio)
+let audioCtx = null
+function ensureAudio() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext
+    if (!Ctx) return
+    audioCtx ??= new Ctx()
+    if (audioCtx.state === 'suspended') audioCtx.resume()
+  } catch {
+    audioCtx = null
+  }
+  return audioCtx
+}
+function playNotes(notes, { type = 'sine', vol = 0.3, gap = 0.16 } = {}) {
+  try {
+    const ctx = ensureAudio()
+    if (!ctx) return
+    const t0 = ctx.currentTime
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = type
+      osc.frequency.value = freq
+      const t = t0 + i * gap
+      gain.gain.setValueAtTime(0.0001, t)
+      gain.gain.exponentialRampToValueAtTime(vol, t + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.45)
+      osc.connect(gain).connect(ctx.destination)
+      osc.start(t)
+      osc.stop(t + 0.5)
+    })
+  } catch {
+    // Sin soporte de audio: la notificación visual sigue funcionando
+  }
+}
+
+// Sonidos por evento: reuniones/avisos, inicio de descanso y fin de descanso
+function playChime() {
+  playNotes([523.25, 659.25, 783.99])
+}
+function playRestStart() {
+  playNotes([659.25, 783.99, 987.77], { type: 'triangle', gap: 0.2 })
+}
+function playRestEnd() {
+  playNotes([783.99, 659.25, 523.25], { type: 'triangle', gap: 0.2 })
 }
 
 function useNow() {
@@ -144,12 +192,31 @@ export default function App() {
     document.documentElement.classList.toggle('dark', dark)
   }, [dark])
 
-  const notify = useCallback((msg) => {
-    setToast(msg)
-    if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification('FocusWork', { body: msg })
+  // Los navegadores bloquean el audio hasta que el usuario interactúa al menos una vez
+  useEffect(() => {
+    const unlock = () => ensureAudio()
+    window.addEventListener('pointerdown', unlock)
+    window.addEventListener('keydown', unlock)
+    return () => {
+      window.removeEventListener('pointerdown', unlock)
+      window.removeEventListener('keydown', unlock)
     }
   }, [])
+
+  const notify = useCallback(
+    (msg, sound = 'chime') => {
+      setToast(msg)
+      if (data.soundEnabled) {
+        if (sound === 'rest-start') playRestStart()
+        else if (sound === 'rest-end') playRestEnd()
+        else playChime()
+      }
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('FocusWork', { body: msg })
+      }
+    },
+    [data.soundEnabled],
+  )
 
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
@@ -185,7 +252,7 @@ export default function App() {
     setResting(null)
     if (document.fullscreenElement) document.exitFullscreen?.()
     setNextStretch(Date.now() + data.stretchInterval * 60 * 1000)
-    notify('Descanso completado. Volvamos a concentrarnos. 🌿')
+    notify('Descanso completado. Volvamos a concentrarnos. 🌿', 'rest-end')
   }, [data.stretchInterval, notify, setNextStretch, setResting])
 
   // Stretch timer: automático, se reprograma al inicio o al cambiar la config
@@ -205,7 +272,7 @@ export default function App() {
       scheduledInterval.current = null
       setResting(Date.now() + data.restMinutes * 60 * 1000)
       document.documentElement.requestFullscreen?.().catch(() => {})
-      notify('Toca levantarte y estirarte un momento. Tu cuerpo lo agradece. 🧘')
+      notify('Toca levantarte y estirarte un momento. Tu cuerpo lo agradece. 🧘', 'rest-start')
     }, target - nowMs)
     return () => clearTimeout(t)
   }, [nextStretch, data.stretchEnabled, data.stretchInterval, data.restMinutes, resting, notify, setNextStretch, setResting])
@@ -217,7 +284,7 @@ export default function App() {
       setResting(null)
       if (document.fullscreenElement) document.exitFullscreen?.()
       setNextStretch(Date.now() + data.stretchInterval * 60 * 1000)
-      notify('Descanso completado. Volvamos a concentrarnos. 🌿')
+      notify('Descanso completado. Volvamos a concentrarnos. 🌿', 'rest-end')
     }
   }, [resting, now, data.stretchInterval, notify, setNextStretch, setResting])
 
@@ -627,6 +694,21 @@ function SettingsPanel({ data, now, update, onClose, nextStretch }) {
             now={now}
             onDelete={(id) => update((p) => ({ ...p, meetings: p.meetings.filter((m) => m.id !== id) }))}
           />
+        </section>
+
+        <section className="panel-section">
+          <h3>🔔 Notificaciones</h3>
+          <div className="stretch-row">
+            <span className="stretch-info">
+              Sonido en recordatorios de descanso, reuniones y avisos. Funciona mejor con la pestaña abierta o la app instalada.
+            </span>
+            <button
+              onClick={() => update((p) => ({ ...p, soundEnabled: !p.soundEnabled, }))}
+              className="btn-secondary"
+            >
+              {data.soundEnabled ? 'Desactivar' : 'Activar'}
+            </button>
+          </div>
         </section>
 
         <section className="panel-section">
