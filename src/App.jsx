@@ -64,30 +64,53 @@ function ensureAudio() {
     const Ctx = window.AudioContext || window.webkitAudioContext
     if (!Ctx) return
     audioCtx ??= new Ctx()
-    if (audioCtx.state === 'suspended') audioCtx.resume()
+    if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {})
   } catch {
     audioCtx = null
   }
   return audioCtx
 }
+// iOS solo permite audio tras una interacción del usuario y suspende el contexto
+// si pasa tiempo sin reproducir. Un buffer silencioso en el primer toque
+// desbloquea el audio de forma fiable.
+function unlockAudio() {
+  try {
+    const ctx = ensureAudio()
+    if (!ctx || ctx.state !== 'running') return
+    const buf = ctx.createBuffer(1, 1, 22050)
+    const src = ctx.createBufferSource()
+    src.buffer = buf
+    src.connect(ctx.destination)
+    src.start(0)
+  } catch {
+    // Sin soporte de audio: la notificación visual sigue funcionando
+  }
+}
 function playNotes(notes, { type = 'sine', vol = 0.3, gap = 0.16 } = {}) {
   try {
     const ctx = ensureAudio()
     if (!ctx) return
-    const t0 = ctx.currentTime
-    notes.forEach((freq, i) => {
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.type = type
-      osc.frequency.value = freq
-      const t = t0 + i * gap
-      gain.gain.setValueAtTime(0.0001, t)
-      gain.gain.exponentialRampToValueAtTime(vol, t + 0.02)
-      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.45)
-      osc.connect(gain).connect(ctx.destination)
-      osc.start(t)
-      osc.stop(t + 0.5)
-    })
+    const play = () => {
+      const t0 = ctx.currentTime
+      notes.forEach((freq, i) => {
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.type = type
+        osc.frequency.value = freq
+        const t = t0 + i * gap
+        gain.gain.setValueAtTime(0.0001, t)
+        gain.gain.exponentialRampToValueAtTime(vol, t + 0.02)
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.45)
+        osc.connect(gain).connect(ctx.destination)
+        osc.start(t)
+        osc.stop(t + 0.5)
+      })
+    }
+    if (ctx.state === 'suspended') {
+      ctx.resume().then(play).catch(() => {})
+    } else {
+      play()
+    }
   } catch {
     // Sin soporte de audio: la notificación visual sigue funcionando
   }
@@ -194,11 +217,13 @@ export default function App() {
 
   // Los navegadores bloquean el audio hasta que el usuario interactúa al menos una vez
   useEffect(() => {
-    const unlock = () => ensureAudio()
+    const unlock = () => unlockAudio()
     window.addEventListener('pointerdown', unlock)
+    window.addEventListener('touchstart', unlock)
     window.addEventListener('keydown', unlock)
     return () => {
       window.removeEventListener('pointerdown', unlock)
+      window.removeEventListener('touchstart', unlock)
       window.removeEventListener('keydown', unlock)
     }
   }, [])
@@ -277,17 +302,6 @@ export default function App() {
     return () => clearTimeout(t)
   }, [nextStretch, data.stretchEnabled, data.stretchInterval, data.restMinutes, resting, notify, setNextStretch, setResting])
 
-  // Rest countdown → finish & reschedule
-  useEffect(() => {
-    if (!resting) return
-    if (Date.now() >= resting) {
-      setResting(null)
-      if (document.fullscreenElement) document.exitFullscreen?.()
-      setNextStretch(Date.now() + data.stretchInterval * 60 * 1000)
-      notify('Descanso completado. Volvamos a concentrarnos. 🌿', 'rest-end')
-    }
-  }, [resting, now, data.stretchInterval, notify, setNextStretch, setResting])
-
   useEffect(() => {
     if (!toast) return
     const t = setTimeout(() => setToast(null), 7000)
@@ -295,11 +309,11 @@ export default function App() {
   }, [toast])
 
   // Persistir la cuenta regresiva para que sobreviva recargas (p. ej. al cambiar tema)
-  // Si vino de Firebase un timestamp vencido (p. ej. otro dispositivo), se limpia
+  // Si el timestamp del descanso vino vencido (p. ej. otro dispositivo), el overlay
+  // reproduce la caída del árbol y finaliza solo.
   useEffect(() => {
     if (nextStretch && nextStretch <= Date.now()) setNextStretch(null)
-    if (resting && resting <= Date.now()) setResting(null)
-  }, [nextStretch, resting, setNextStretch, setResting])
+  }, [nextStretch, setNextStretch])
 
   // Meeting alerts
   function *happeningMeetings(nowMs) {
@@ -402,15 +416,15 @@ export default function App() {
 
       {toast && <Toast text={toast} onClose={() => setToast(null)} />}
 
-      {resting && <RestOverlay endsAt={resting} total={data.restMinutes * 60} now={now} onFinish={finishRest} />}
+      {resting && <RestOverlay endsAt={resting} now={now} onFinish={finishRest} />}
 
       {user ? (
         <>
           <main className="stage">
             <PlantStage progress={progress} data={data} now={now} />
             <div className="widgets">
-              <Quote />
               <RestTimer nextStretch={nextStretch} enabled={data.stretchEnabled} intervalMin={data.stretchInterval} now={now} />
+              <Quote />
               <UpNext now={now} nextMeeting={nextMeeting} />
             </div>
           </main>
@@ -526,8 +540,8 @@ function PlantStage({ progress, data, now }) {
   const [eh, em] = (data.workEnd || '0:0').split(':').map(Number)
   const fmt = (h, m) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
   const workPct = Math.round(progress * 100)
-  const growth = Math.min(1, data.focusSeconds / (8 * 3600))
-  const level = Math.floor(growth * 6)
+  // La planta crece con el tiempo transcurrido de la jornada (entrada → salida)
+  const growth = Math.min(1, Math.max(0, progress))
   const remaining = Math.max(0, 1 - progress)
   const nowH = now.getHours(), nowM = now.getMinutes()
 
@@ -542,7 +556,7 @@ function PlantStage({ progress, data, now }) {
             style={{ strokeDashoffset: 930 * (1 - progress) }}
           />
         </svg>
-        <Plant level={level} />
+        <Plant growth={growth} />
         <span className="ring-pct">{workPct}% de tu jornada</span>
       </div>
 
@@ -561,21 +575,49 @@ function PlantStage({ progress, data, now }) {
   )
 }
 
-function Plant({ level }) {
-  const scale = 0.7 + level * 0.05
+function Plant({ growth }) {
+  const MAX_PAIRS = 18
+  const pairs = Math.min(MAX_PAIRS, Math.round(growth * MAX_PAIRS)) || (growth > 0 ? 1 : 0)
+  const topJunctionY = pairs > 0 ? 98 - (pairs - 1) * 4.2 : 108
+  const scale = 0.55 + growth * 0.45
+
+  const leaves = []
+  for (let i = 0; i < pairs; i++) {
+    const y = 98 - i * 4.2
+    const side = i % 2 === 0 ? -1 : 1
+    const rot = side * (32 + (i % 3) * 5)
+    const s = Math.max(0.55, 1 - i * 0.03)
+    const fill = i % 2 === 0 ? '#4aa37a' : '#3fae84'
+    leaves.push(
+      <g key={i} transform={`translate(80 ${y}) rotate(${rot}) scale(${s})`}>
+        <path d="M0 0 C-10 -5 -12 -18 -6 -27 C-2 -31 2 -31 6 -27 C12 -18 10 -5 0 0 Z" fill={fill} />
+        <path d="M0 -2 L-1 -24" stroke="#2f7a58" strokeWidth="1.4" opacity="0.35" />
+      </g>,
+    )
+  }
+
   return (
-    <svg className="plant" viewBox="0 0 160 160" aria-hidden="true" style={{ transform: `scale(${scale})` }}>
+    <svg
+      className="plant"
+      viewBox="0 0 160 160"
+      aria-hidden="true"
+      style={{ width: `${62 * scale}%`, height: `${62 * scale}%` }}
+    >
       <path d="M52 152 L108 152 L100 110 L60 110 Z" fill="#d9b382" />
-      <path d="M80 112 C80 108 78 104 80 100" stroke="#9a6f45" strokeWidth="4" fill="none" strokeLinecap="round" />
-      <path d="M66 98 q-16 -6 -20 -22 q18 4 20 22z" fill="#4aa37a" />
-      <path d="M94 98 q18 -4 22 -20 q-18 0 -22 20z" fill="#3fae84" />
-      <path d="M80 88 q-4 -18 2 -30" stroke="#3c8c68" strokeWidth="5" fill="none" strokeLinecap="round" />
-      <path d="M74 80 q-20 -8 -24 -24 q20 4 24 24z" fill="#4aa37a" />
-      <path d="M88 78 q20 -6 24 -22 q-20 4 -24 22z" fill="#3fae84" />
-      <path d="M80 68 q-2 -16 0 -26" stroke="#3c8c68" strokeWidth="5" fill="none" strokeLinecap="round" />
-      <path d="M72 56 q-18 -6 -20 -20 q18 2 20 20z" fill="#4aa37a" />
-      <path d="M90 54 q18 -4 20 -18 q-18 2 -20 18z" fill="#3fae84" />
-      {level >= 5 && <circle cx="81" cy="42" r="6" fill="#ffd977" />}
+      <ellipse cx="80" cy="112" rx="20" ry="5" fill="#6b4a2f" />
+      {leaves}
+      <path
+        d={`M80 110 C74 88 84 64 80 ${Math.max(28, topJunctionY)}`}
+        stroke="#3c8c68" strokeWidth="5" fill="none" strokeLinecap="round"
+      />
+      {pairs >= 15 && (
+        <g>
+          <circle cx="72" cy={topJunctionY - 12} r="3.5" fill="#e9c46a" />
+          <circle cx="88" cy={topJunctionY - 10} r="3" fill="#e9c46a" />
+          <circle cx="80" cy={topJunctionY - 16} r="6.5" fill="#ffd977" />
+          <circle cx="80" cy={topJunctionY - 16} r="2.6" fill="#f4a62a" />
+        </g>
+      )}
     </svg>
   )
 }
@@ -644,7 +686,7 @@ function RestTimer({ nextStretch, enabled, intervalMin, now }) {
   return (
     <section className="widget rest-timer">
       <span className="label">Próximo descanso</span>
-      <div className="rest-timer-row">
+      <div className="rest-timer-col">
         <div className="rest-mini-wrap">
           <svg className="ring" viewBox="0 0 160 160">
             <circle className="ring-track" cx="80" cy="80" r="74" strokeWidth="10" />
@@ -844,21 +886,36 @@ function StretchSettings({ values, onInterval, onRest, onToggle, nextStretch }) 
         <button onClick={onToggle} className="btn-secondary">{values.enabled ? 'Desactivar' : 'Activar'}</button>
       </div>
       <label className="stretch-label">
-        Cada <select className="select" value={values.interval} onChange={(e) => onInterval(Number(e.target.value))}>
-          <option value={30}>30</option>
-          <option value={45}>45</option>
-          <option value={50}>50</option>
-          <option value={60}>60</option>
-          <option value={90}>90</option>
-        </select> minutos
+        Cada
+        <input
+          type="number"
+          className="input rest-minutes-input"
+          min="10"
+          max="180"
+          step="10"
+          value={values.interval}
+          onChange={(e) => {
+            const v = Math.round(parseInt(e.target.value, 10) / 10) * 10
+            if (v >= 10 && v <= 180) onInterval(v)
+          }}
+        />
+        minutos
       </label>
       <label className="stretch-label">
-        Duración del descanso: <select className="select" value={values.rest} onChange={(e) => onRest(Number(e.target.value))}>
-          <option value={3}>3</option>
-          <option value={5}>5</option>
-          <option value={10}>10</option>
-          <option value={15}>15</option>
-        </select> minutos
+        Duración del descanso:
+        <input
+          type="number"
+          className="input rest-minutes-input"
+          min="5"
+          max="120"
+          step="5"
+          value={values.rest}
+          onChange={(e) => {
+            const v = Math.round(parseInt(e.target.value, 10) / 5) * 5
+            if (v >= 5 && v <= 120) onRest(v)
+          }}
+        />
+        minutos
       </label>
       {nextStretch && <p className="next-stretch">Próximo descanso en {Math.max(1, Math.round((nextStretch - Date.now()) / 60000))} min</p>}
     </div>
@@ -876,33 +933,95 @@ function Toast({ text, onClose }) {
   )
 }
 
-function RestOverlay({ endsAt, total, now, onFinish }) {
+function RestOverlay({ endsAt, now, onFinish }) {
   const remainingMs = Math.max(0, endsAt - now.getTime())
   const secs = Math.ceil(remainingMs / 1000)
   const mm = Math.floor(secs / 60)
   const ss = secs % 60
-  const totalMs = total * 1000
-  const frac = totalMs > 0 ? remainingMs / totalMs : 0
+  const [falling, setFalling] = useState(false)
+  const done = falling || remainingMs <= 0
+
+  // Al terminar (o si el usuario corta el descanso), se cae el árbol y luego se cierra
+  useEffect(() => {
+    if (!done) return
+    const t = setTimeout(onFinish, 2000)
+    return () => clearTimeout(t)
+  }, [done, onFinish])
+
   return (
     <div className="rest-overlay">
       <div className="rest-box">
-        <div className="rest-ring-wrap">
-          <svg className="ring" viewBox="0 0 320 320">
-            <circle className="ring-track" cx="160" cy="160" r="148" />
-            <circle
-              className="ring-progress rest-ring"
-              cx="160" cy="160" r="148"
-              style={{ strokeDashoffset: 930 * (1 - frac) }}
-            />
+        <div className={`rest-scene${done ? ' done' : ''}`}>
+          <svg className="woodpecker-svg" viewBox="195 0 285 340" aria-hidden="true">
+            <circle cx="404" cy="64" r="26" fill="#f6d98a" opacity="0.9" />
+            <circle cx="404" cy="64" r="42" fill="#f6d98a" opacity="0.22" />
+            <g className="trunk-group">
+              <path d="M330 360 L338 56 L366 56 L374 360 Z" fill="#7a5238" />
+              <path d="M342 360 L346 58" stroke="#5f3d27" strokeWidth="4" opacity="0.7" />
+              <path d="M356 360 L360 58" stroke="#8d6546" strokeWidth="4" opacity="0.5" />
+              <path d="M366 150 q16 -4 18 -14 q-14 2 -18 14" stroke="#8d6546" strokeWidth="3" fill="none" opacity="0.7" />
+              <g className="canopy">
+                <circle cx="338" cy="52" r="26" fill="#4aa37a" />
+                <circle cx="368" cy="38" r="30" fill="#3fae84" />
+                <circle cx="398" cy="54" r="24" fill="#4aa37a" />
+                <circle cx="352" cy="30" r="22" fill="#2f8d68" />
+                <circle cx="382" cy="60" r="20" fill="#2f8d68" />
+              </g>
+              <g className="branch">
+                <path d="M336 96 Q270 78 248 92 Q300 92 334 104 Z" fill="#8d6546" />
+                <path d="M272 88 q10 -16 24 -12 q-8 13 -24 12" fill="#4aa37a" />
+                <path d="M252 92 q-8 -16 -22 -14 q8 14 22 14" fill="#3fae84" />
+              </g>
+              <ellipse cx="352" cy="150" rx="9" ry="13" fill="#3a2415" />
+              <g className="pecker">
+                <g className="pecker-body">
+                  <ellipse cx="300" cy="200" rx="30" ry="42" fill="#33363a" />
+                  <ellipse cx="316" cy="202" rx="10" ry="34" fill="#ece7db" />
+                  <path d="M268 190 q-20 -8 -22 -26 q20 6 22 26 z" fill="#454c52" />
+                  <path d="M272 176 q-12 8 -8 20" stroke="#2c3136" strokeWidth="3" fill="none" opacity="0.8" />
+                  <path d="M292 238 L304 272 L326 262 Z" fill="#24272b" />
+                  <path d="M300 240 L306 268" stroke="#11151a" strokeWidth="2" opacity="0.7" />
+                  <rect x="322" y="240" width="8" height="18" rx="3" fill="#c79a63" />
+                  <rect x="304" y="246" width="8" height="18" rx="3" fill="#c79a63" />
+                </g>
+                <g className="pecker-head">
+                  <path d="M296 170 L336 162 L336 182 L296 178 Z" fill="#ece7db" />
+                  <circle cx="322" cy="148" r="20" fill="#d9483f" />
+                  <path d="M306 134 q14 -26 34 -14 q-8 15 -18 17 z" fill="#e05a4f" />
+                  <circle cx="315" cy="146" r="3.5" fill="#fff" />
+                  <circle cx="316.2" cy="146" r="1.8" fill="#222" />
+                  <ellipse cx="328" cy="154" rx="5" ry="3.5" fill="#f4f0e4" opacity="0.9" />
+                  <path d="M334 142 L354 148 L334 156 Z" fill="#f4a62a" />
+                </g>
+              </g>
+            </g>
+            <g className="chips">
+              <path className="chip" d="M354 142 l7 -4 l-1 6 z" fill="#d9b382" />
+              <path className="chip c2" d="M358 150 l6 -2 l-2 5 z" fill="#c9a06b" />
+              <path className="chip c3" d="M352 156 l7 -3 l-1 6 z" fill="#e0bd8c" />
+              <path className="chip c4" d="M360 138 l6 -3 l-1 5 z" fill="#e0bd8c" />
+            </g>
+            <g className="leaves">
+              <path className="leaf" d="M330 70 q10 -16 24 -12 q-8 14 -24 12" fill="#4aa37a" />
+              <path className="leaf l2" d="M390 90 q10 -16 24 -12 q-8 14 -24 12" fill="#3fae84" />
+              <path className="leaf l3" d="M290 110 q10 -16 24 -12 q-8 14 -24 12" fill="#2f8d68" />
+              <path className="leaf l4" d="M360 120 q10 -16 24 -12 q-8 14 -24 12" fill="#4aa37a" />
+            </g>
           </svg>
           <div className="rest-center">
             <span className="rest-digits">{String(mm).padStart(2, '0')}:{String(ss).padStart(2, '0')}</span>
             <span className="rest-label">Descanso</span>
           </div>
         </div>
-        <h2>Hora de pararte 🧘</h2>
-        <p className="rest-msg">Levanta, estírate, respira y mueve un poco el cuerpo. Tómate tu tiempo.</p>
-        <button className="btn-primary" onClick={onFinish}>Terminar descanso</button>
+        <h2>{done ? '¡Árbol caído! 🌳' : 'Hora de pararte 🧘'}</h2>
+        <p className="rest-msg">
+          {done
+            ? 'Descanso completado, el árbol se llevó el estrés del día.'
+            : 'Levanta, estírate, respira y mueve un poco el cuerpo. Tómate tu tiempo.'}
+        </p>
+        <button className="btn-primary" onClick={() => setFalling(true)} disabled={done}>
+          {done ? 'Terminando…' : 'Terminar descanso'}
+        </button>
       </div>
     </div>
   )
