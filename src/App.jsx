@@ -76,7 +76,9 @@ function ensureAudio() {
 function unlockAudio() {
   try {
     const ctx = ensureAudio()
-    if (!ctx || ctx.state !== 'running') return
+    if (!ctx) return
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {})
+    if (ctx.state !== 'running') return
     const buf = ctx.createBuffer(1, 1, 22050)
     const src = ctx.createBufferSource()
     src.buffer = buf
@@ -116,14 +118,65 @@ function playNotes(notes, { type = 'sine', vol = 0.3, gap = 0.16 } = {}) {
   }
 }
 
+// Latido continuo durante el descanso (sonido de "corazón": dos tonos graves cercanos)
+let heartbeatTimer = null
+function playHeartbeat({ interval = 1000, vol = 0.25 } = {}) {
+  stopHeartbeat()
+  try {
+    const ctx = ensureAudio()
+    if (!ctx) return
+    const beat = () => {
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {})
+      }
+      const t = ctx.currentTime
+      // Primer tono del latido (lub) - más suave con triangle
+      const osc1 = ctx.createOscillator()
+      const gain1 = ctx.createGain()
+      osc1.type = 'triangle'
+      osc1.frequency.value = 70
+      gain1.gain.setValueAtTime(0.0001, t)
+      gain1.gain.exponentialRampToValueAtTime(vol, t + 0.01)
+      gain1.gain.exponentialRampToValueAtTime(0.0001, t + 0.18)
+      osc1.connect(gain1).connect(ctx.destination)
+      osc1.start(t)
+      osc1.stop(t + 0.22)
+      // Segundo tono del latido (dub) - ligeramente más agudo y suave
+      const osc2 = ctx.createOscillator()
+      const gain2 = ctx.createGain()
+      osc2.type = 'triangle'
+      osc2.frequency.value = 55
+      const t2 = t + 0.16
+      gain2.gain.setValueAtTime(0.0001, t2)
+      gain2.gain.exponentialRampToValueAtTime(vol * 0.75, t2 + 0.01)
+      gain2.gain.exponentialRampToValueAtTime(0.0001, t2 + 0.15)
+      osc2.connect(gain2).connect(ctx.destination)
+      osc2.start(t2)
+      osc2.stop(t2 + 0.2)
+    }
+    beat()
+    heartbeatTimer = setInterval(beat, interval)
+  } catch {
+    // Sin soporte de audio
+  }
+}
+function stopHeartbeat() {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer)
+    heartbeatTimer = null
+  }
+}
+
 // Sonidos por evento: reuniones/avisos, inicio de descanso y fin de descanso
 function playChime() {
   playNotes([523.25, 659.25, 783.99])
 }
 function playRestStart() {
   playNotes([659.25, 783.99, 987.77], { type: 'triangle', gap: 0.2 })
+  playHeartbeat()
 }
 function playRestEnd() {
+  stopHeartbeat()
   playNotes([783.99, 659.25, 523.25], { type: 'triangle', gap: 0.2 })
 }
 
@@ -941,9 +994,17 @@ function RestOverlay({ endsAt, now, onFinish }) {
   const [falling, setFalling] = useState(false)
   const done = falling || remainingMs <= 0
 
+  // Latido continuo durante el descanso
+  useEffect(() => {
+    if (done) return
+    playHeartbeat()
+    return () => stopHeartbeat()
+  }, [done])
+
   // Al terminar (o si el usuario corta el descanso), se cae el árbol y luego se cierra
   useEffect(() => {
     if (!done) return
+    stopHeartbeat()
     const t = setTimeout(onFinish, 2000)
     return () => clearTimeout(t)
   }, [done, onFinish])
