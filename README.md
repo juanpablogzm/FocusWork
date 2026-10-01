@@ -6,7 +6,7 @@
 
 A minimalist, friendly **PWA** that keeps you company through your workday: a plant that grows with your progress, stretch reminders, recurring meetings, and a kiosk mode to block out distractions.
 
-**[🚀 Live Demo](https://juan-bot.github.io/FocusWork/)**
+**[🚀 Live Demo](https://juanpablogzm.github.io/FocusWork/)**
 
 ![Version](https://img.shields.io/badge/version-0.1.0-3fae84) ![React](https://img.shields.io/badge/React-19-61dafb) ![Vite](https://img.shields.io/badge/Vite-8-646cff) ![Firebase](https://img.shields.io/badge/Firebase-Google%20Auth%20%2B%20Realtime-ffca28) ![PWA](https://img.shields.io/badge/PWA-ready-2ea043) ![License](https://img.shields.io/badge/license-private-8b8b8b)
 
@@ -40,7 +40,7 @@ A minimalist, friendly **PWA** that keeps you company through your workday: a pl
 ### Installation
 
 ```bash
-git clone https://github.com/juan-bot/FocusWork.git
+git clone https://github.com/juanpablogzm/FocusWork.git
 cd FocusWork
 npm install
 npm run dev
